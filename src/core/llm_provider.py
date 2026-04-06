@@ -1,6 +1,5 @@
-import os
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Generator
+from typing import Dict, Any, Optional, Generator
 
 class LLMProvider(ABC):
     """
@@ -28,3 +27,13 @@ class LLMProvider(ABC):
     def stream(self, prompt: str, system_prompt: Optional[str] = None) -> Generator[str, None, None]:
         """Produce a streaming completion."""
         pass
+
+
+def create_llm_provider(provider_name: str = "openai", model_name: str = "gpt-4o") -> "LLMProvider":
+    normalized = (provider_name or "openai").strip().lower()
+    if normalized != "openai":
+        raise ValueError(f"Unsupported provider '{provider_name}'. Only 'openai' is supported.")
+
+    from src.core.openai_provider import OpenAIProvider
+
+    return OpenAIProvider(model_name=model_name)

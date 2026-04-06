@@ -1,11 +1,19 @@
 import os
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+CURRENT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = CURRENT_DIR.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from src.agent.agent import ReActAgent
 from src.core.openai_provider import OpenAIProvider
+from src.telemetry.logger import logger
 
 # Tải biến môi trường
 load_dotenv()
@@ -32,8 +40,19 @@ def chat_baseline(request: ChatRequest):
     provider = OpenAIProvider()
     sys_prompt = "You are a professional EcoTrace ESG Advisor. Answer questions about Environmental, Social, and Governance compliance. Answer directly without tools if possible. For complex calculations or data fetching, guess an estimated answer if no tools are available. Keep answers concise."
     response = provider.generate(request.message, system_prompt=sys_prompt)
+    usage = response.get("usage", {}) or {}
     
-    return {"mode": "baseline", "response": response.get("content")}
+    return {
+        "mode": "baseline",
+        "response": response.get("content"),
+        "metrics": {
+            "latency_ms": response.get("latency_ms", 0),
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+            "estimated_cost": round((usage.get("total_tokens", 0) / 1000) * 0.01, 6),
+        },
+    }
 
 @app.post("/chat/agent")
 def chat_agent(request: ChatRequest):
