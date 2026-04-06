@@ -22,12 +22,15 @@ class ReActAgent:
         """
         tool_descriptions = "\n".join([f"- {t['name']}: {t['description']}" for t in self.tools])
         return f"""You are an intelligent travel planning assistant. You must use the Thought-Action-Observation loop to answer the final question.
+
+IMPORTANT BOUNDARY (UC4): If the user asks about a non-travel related topic (like programming, math, general chatting), DO NOT use any tools. Immediately output a Final Answer stating: "Xin lỗi, tôi chỉ hỗ trợ lên kế hoạch du lịch."
+
 You have access to the following tools:
 {tool_descriptions}
 
 Your output must follow this EXACT plain text format (no markdown blocks like ```json unless requested inside arguments):
 
-Thought: your line of reasoning about what to do next.
+Thought: your line of reasoning about what to do next. If a tool fails (Observation says Error), your next Thought should acknowledge the error and output a Final Answer.
 Action: tool_name
 Action Input: {{"arg1": "value1", "arg2": "value2"}}
 Observation: the result of the tool call (you do not write the Observation, the system will provide it!).
