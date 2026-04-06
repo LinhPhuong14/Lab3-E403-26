@@ -16,15 +16,12 @@ class IndustryLogger:
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        # File Handler (JSON)
-        log_file = os.path.join(log_dir, f"{datetime.now().strftime('%Y-%m-%d')}.log")
-        file_handler = logging.FileHandler(log_file)
-        
-        # Console Handler
-        console_handler = logging.StreamHandler()
+        # File Handler (JSON) - Mỗi lần khởi tạo logger sẽ sinh 1 file timestamp riêng
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_file = os.path.join(log_dir, f"log_{timestamp}.log")
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
         
         self.logger.addHandler(file_handler)
-        self.logger.addHandler(console_handler)
 
     def log_event(self, event_type: str, data: Dict[str, Any]):
         """Logs an event with a timestamp and type."""
