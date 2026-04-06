@@ -1,7 +1,7 @@
 # Individual Report: Lab 3 - Chatbot vs ReAct Agent
 
-- **Student Name**: Linh Phương
-- **Student ID**: [Your ID Here]
+- **Student Name**: Nguyen Phuong Linh
+- **Student ID**: 2A202600193
 - **Date**: 06/04/2026
 
 ---
@@ -26,7 +26,7 @@
 *Phân tích vòng lặp lỗi Parsing Error điển hình (Infinite ReAct Loop).*
 
 - **Problem Description**: LLM bị mắc kẹt văng lỗi `Max steps reached` (vòng lặp 5 lần) liên tục kèm theo log "Could not parse Action or Final Answer" khi người dùng hỏi các câu cạm bẫy lách luật (Ví dụ: "Bắt LLM đóng vai đầu bếp nấu món ăn").
-- **Log Source**: `👁️ Observation: Error: Could not parse Action or Final Answer. Please follow the correct Thought/Action/Action Input format.`
+- **Log Source**: `Observation: Error: Could not parse Action or Final Answer. Please follow the correct Thought/Action/Action Input format.`
 - **Diagnosis**: 
   - Regex Parser của hệ thống quy định chữ chốt hạ phải bắt đầu bằng đoạn text `Final Answer: ...`.
   - Mặc dù hệ thống đã được cài đặt lệnh "Strict Bounds" (ép từ chối câu hỏi ngoài luồng), nhưng do Prompt mỏng nên LLM chỉ nói vỏn vẹn *"Dạ xin lỗi bạn, mình được đào tạo..."* (thiếu cụm `Final Answer:` ở đầu chuỗi). Hệ thống Regex không tóm được mỏ neo này, ném lỗi ngược lại cho LLM, khiến AI loay hoay lặp lại câu xin lỗi.
