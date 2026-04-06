@@ -50,7 +50,16 @@ IMPORTANT: You can only output ONE Action at a time. After outputting Action and
             steps += 1
             
             # Generate LLM response: Provide the current trace + the system prompt instruction
-            result = self.llm.generate(session_prompt, system_prompt=self.get_system_prompt())
+            llm_response = self.llm.generate(session_prompt, system_prompt=self.get_system_prompt())
+            
+            # Track 2: Extract and dump Telemetry Metrics
+            result = llm_response.get("content", "")
+            logger.log_event("LLM_METRIC", {
+                "step": steps,
+                "latency_ms": llm_response.get("latency_ms", 0),
+                "usage": llm_response.get("usage", {}),
+                "provider": llm_response.get("provider", "unknown")
+            })
             
             # Parse result safely
             # Sometimes LLMs wrap their output in extra spaces or add 'Observation:' on their own.
