@@ -1,162 +1,214 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
-type ChatRole = "user" | "assistant";
-
-type ChatMessage = {
-  role: ChatRole;
+// Types
+interface Message {
+  id: string;
+  role: "user" | "agent";
   content: string;
-};
+  metrics?: {
+    total_tokens: number;
+    estimated_cost_usd: number;
+  };
+  steps?: Array<{
+    thought: string;
+    action: string;
+    observation: string;
+  }>;
+}
 
-const SUGGESTED_PROMPTS = [
-  "Khí hậu ở Đà Lạt vào mùa đông như thế nào?",
-  "Dự tính chi phí cho 2 người đi Bangkok 3 ngày, 150$/ngày, hệ số 1.1",
-  "Tìm giá phòng ở Phú Quốc rồi tính tổng chi phí 4 người đi 5 ngày, hệ số 1.5",
-];
-
-const AGENT_ENDPOINT = process.env.NEXT_PUBLIC_AGENT_ENDPOINT ?? "http://localhost:8000/chat/agent";
-
-export default function Home() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
+export default function ChatPage() {
+  const [messages, setMessages] = useState<Message[]>([
     {
-      role: "assistant",
-      content:
-        "Chào bạn. Tôi là Travel Planner Agent. Hãy đặt câu hỏi về chi phí, lịch trình hoặc tìm giá du lịch.",
-    },
-  ]);
-  const [prompt, setPrompt] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const canSend = useMemo(() => prompt.trim().length > 0 && !isLoading, [prompt, isLoading]);
-
-  async function sendMessage(rawPrompt: string) {
-    const cleanPrompt = rawPrompt.trim();
-    if (!cleanPrompt || isLoading) {
-      return;
+      id: "welcome-1",
+      role: "agent",
+      content: "Xin chào! Mình là EcoTrace ESG Advisor. Mình có thể giúp bạn cập nhật tin tức ESG, tra cứu thông tin doanh nghiệp, lấy giá cổ phiếu thị trường hoặc tính toán lượng phát thải Carbon. Mình có thể giúp gì cho bạn hôm nay?"
     }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    setError(null);
-    setPrompt("");
-    setIsLoading(true);
-    setMessages((prev) => [...prev, { role: "user", content: cleanPrompt }]);
+  // Auto scroll to bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input.trim()
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setLoading(true);
 
     try {
-      const response = await fetch(AGENT_ENDPOINT, {
+      const response = await fetch("http://localhost:8000/chat/agent", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({ message: cleanPrompt }),
+        body: JSON.stringify({ message: userMessage.content })
       });
 
       if (!response.ok) {
-        throw new Error(`Backend error: ${response.status}`);
+        throw new Error("Network response was not ok");
       }
 
-      const payload = await response.json();
-      const answer =
-        payload?.response ??
-        payload?.answer ??
-        payload?.output ??
-        payload?.message ??
-        "Không nhận được phản hồi hợp lệ.";
+      const data = await response.json();
 
-      setMessages((prev) => [...prev, { role: "assistant", content: String(answer) }]);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Không kết nối được backend.";
-      setError(message);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Tôi gặp lỗi kết nối backend. Vui lòng kiểm tra API Python đang chạy tại localhost:8000.",
-        },
-      ]);
+      const agentMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "agent",
+        content: data.response || "Dạ, mình không nhận được phản hồi, bạn thử lại nhé.",
+        metrics: data.metrics,
+        steps: data.steps
+      };
+
+      setMessages((prev) => [...prev, agentMessage]);
+    } catch (error) {
+      console.error("Error communicating with agent API:", error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "agent",
+        content: "🚨 Lỗi kết nối: Không thể kết nối tới Backend Agent. Vui lòng đảm bảo FastAPI đang chạy ở cổng 8000."
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    void sendMessage(prompt);
-  }
+  };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#fbe8d2_0%,#f5efe6_40%,#e6f1f6_100%)] text-slate-900">
-      <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-6 md:px-8 md:py-10">
-        <header className="mb-6 rounded-2xl border border-white/60 bg-white/70 p-5 backdrop-blur">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Lab 03</p>
-          <h1 className="mt-2 text-2xl font-bold md:text-3xl">Trợ Lý Lập Kế Hoạch Du Lịch</h1>
-          <p className="mt-2 text-sm text-slate-600">Nhập câu hỏi để nhận tư vấn hành trình và ước tính chi phí chuyến đi.</p>
-        </header>
+    <div className="min-h-screen bg-[#0f172a] text-slate-100 flex flex-col items-center p-4 sm:p-8 font-sans selection:bg-[#10b981] selection:text-white">
+      {/* Header */}
+      <header className="w-full max-w-4xl mb-8 flex flex-col items-center justify-center space-y-2 mt-4 relative z-10">
+        <div className="inline-flex items-center justify-center p-3 bg-[#1e293b] rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.15)] ring-1 ring-white/10 mb-2">
+          <svg className="w-8 h-8 text-[#10b981]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#10b981] to-[#34d399] text-transparent bg-clip-text">
+          EcoTrace Advisor
+        </h1>
+        <p className="text-sm text-slate-400 font-medium tracking-wide uppercase">Tư vấn ESG & Phân tích Carbon</p>
+      </header>
 
-        <section className="mb-4 flex flex-wrap gap-2">
-          {SUGGESTED_PROMPTS.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => {
-                setPrompt(item);
-              }}
-              className="rounded-full border border-slate-300 bg-white/80 px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-400 hover:bg-white"
+      {/* Chat Container */}
+      <main className="w-full max-w-4xl flex-1 bg-[#1e293b]/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/5 flex flex-col overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#10b981] to-transparent opacity-50"></div>
+
+        {/* Messages Layout */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              {item}
-            </button>
-          ))}
-        </section>
-
-        <section className="flex-1 overflow-hidden rounded-2xl border border-white/60 bg-white/80 shadow-sm backdrop-blur">
-          <div className="h-[56vh] overflow-y-auto p-4 md:p-6">
-            <div className="space-y-3">
-              {messages.map((msg, index) => (
-                <article
-                  key={`${msg.role}-${index}`}
-                  className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-relaxed md:text-base ${
-                    msg.role === "user"
-                      ? "ml-auto bg-slate-900 text-white"
-                      : "mr-auto border border-slate-200 bg-slate-50 text-slate-800"
+              <div
+                className={`max-w-[85%] rounded-2xl p-4 shadow-sm backdrop-blur-sm ${msg.role === "user"
+                    ? "bg-[#10b981] text-white rounded-br-none"
+                    : "bg-slate-800/80 border border-white/5 rounded-bl-none text-slate-200"
                   }`}
-                >
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider opacity-70">
-                    {msg.role === "user" ? "Bạn" : "Trợ lý"}
-                  </p>
-                  <p>{msg.content}</p>
-                </article>
-              ))}
-
-              {isLoading && (
-                <article className="mr-auto max-w-[88%] rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider">Trợ lý</p>
-                  <p>Đang suy luận và gọi công cụ...</p>
-                </article>
-              )}
-            </div>
-          </div>
-
-          <form onSubmit={handleSubmit} className="border-t border-slate-200 bg-white p-3 md:p-4">
-            <div className="flex gap-2">
-              <input
-                value={prompt}
-                onChange={(event) => {
-                  setPrompt(event.target.value);
-                }}
-                placeholder="Nhập câu hỏi du lịch của bạn..."
-                className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none ring-0 transition placeholder:text-slate-400 focus:border-slate-900"
-              />
-              <button
-                type="submit"
-                disabled={!canSend}
-                className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                Gửi
-              </button>
+                {msg.role === "agent" && (
+                  <div className="flex items-center justify-between space-x-2 mb-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse"></span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Chuyên gia ESG</span>
+                    </div>
+                    {msg.metrics && (
+                      <div className="flex items-center space-x-3 text-[10px] text-slate-400 bg-black/20 px-2 py-1 rounded-md border border-white/5">
+                        <span title="Số Token sử dụng">🪙 {msg.metrics.total_tokens}</span>
+                        <span title="Chi phí ước tính (GPT-4o)">💰 ${msg.metrics.estimated_cost_usd}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="whitespace-pre-wrap leading-relaxed text-sm sm:text-base">
+                  {msg.content}
+                </div>
+
+                {/* Steps Accordion */}
+                {msg.steps && msg.steps.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-white/5">
+                    <details className="group">
+                      <summary className="flex items-center justify-between cursor-pointer text-xs font-medium text-slate-400 hover:text-[#10b981] transition-colors list-none">
+                        <span>🔍 Xem các bước suy luận ({msg.steps.length} bước)</span>
+                        <span className="transition group-open:rotate-180">
+                          <svg fill="none" height="16" shapeRendering="geometricPrecision" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" viewBox="0 0 24 24" width="16"><path d="M6 9l6 6 6-6"></path></svg>
+                        </span>
+                      </summary>
+                      <div className="mt-3 space-y-3 bg-[#0f172a] rounded-xl p-3 border border-white/5 text-xs text-slate-300 max-h-60 overflow-y-auto custom-scrollbar">
+                        {msg.steps.map((step, idx) => (
+                          <div key={idx} className="space-y-1">
+                            <div className="font-semibold text-purple-400">🤔 Suy nghĩ: <span className="font-normal text-slate-300">{step.thought}</span></div>
+                            {step.action && <div className="font-semibold text-blue-400">⚡ Hành động: <span className="font-normal font-mono bg-black/30 px-1 py-0.5 rounded text-blue-200">{step.action}</span></div>}
+                            {step.observation && <div className="font-semibold text-amber-400">👁️ Kết quả: <span className="font-normal text-slate-300">{step.observation}</span></div>}
+                            {idx < msg.steps!.length - 1 && <hr className="border-white/5 my-2" />}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  </div>
+                )}
+              </div>
             </div>
-            {error && <p className="mt-2 text-xs text-red-700">Lỗi: {error}</p>}
+          ))}
+
+          {loading && (
+            <div className="flex justify-start">
+              <div className="max-w-[85%] rounded-2xl rounded-bl-none p-5 bg-slate-800/80 border border-white/5 shadow-sm text-slate-300">
+                <div className="flex items-center space-x-3">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10b981] opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-[#10b981]"></span>
+                  </span>
+                  <span className="text-sm font-medium animate-pulse text-slate-400">Đang phân tích dữ liệu...</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input Form */}
+        <div className="p-4 sm:p-6 bg-[#0f172a]/50 border-t border-white/5">
+          <form
+            onSubmit={handleSubmit}
+            className="relative flex items-center bg-[#1e293b] rounded-2xl ring-1 ring-white/10 focus-within:ring-[#10b981]/50 focus-within:shadow-[0_0_15px_rgba(16,185,129,0.1)] transition-all duration-300 overflow-hidden"
+          >
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Hỏi về tin tức ESG của Microsoft hoặc yêu cầu tính toán lượng carbon..."
+              disabled={loading}
+              className="flex-1 bg-transparent border-none py-4 px-6 text-slate-200 placeholder-slate-500 focus:outline-none disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || loading}
+              className="p-3 mr-2 bg-[#10b981] hover:bg-[#059669] text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center group"
+            >
+              <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </button>
           </form>
-        </section>
+
+        </div>
       </main>
     </div>
   );

@@ -1,11 +1,19 @@
 import os
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+CURRENT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = CURRENT_DIR.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from src.agent.agent import ReActAgent
 from src.core.openai_provider import OpenAIProvider
+from src.telemetry.logger import logger
 
 # Tải biến môi trường
 load_dotenv()
@@ -32,8 +40,19 @@ def chat_baseline(request: ChatRequest):
     provider = OpenAIProvider()
     sys_prompt = "You are a helpful travel assistant. Answer questions directly without tools. You should answer simply and concisely. If asked to calculate complex math or do real-time search, guess an estimated answer."
     response = provider.generate(request.message, system_prompt=sys_prompt)
+    usage = response.get("usage", {}) or {}
     
-    return {"mode": "baseline", "response": response.get("content")}
+    return {
+        "mode": "baseline",
+        "response": response.get("content"),
+        "metrics": {
+            "latency_ms": response.get("latency_ms", 0),
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+            "estimated_cost": round((usage.get("total_tokens", 0) / 1000) * 0.01, 6),
+        },
+    }
 
 @app.post("/chat/agent")
 def chat_agent(request: ChatRequest):
@@ -50,13 +69,28 @@ def chat_agent(request: ChatRequest):
         },
         {
             "name": "estimate_travel_budget",
-            "description": "Calculates estimated budget. Arguments: 'days' (integer) number of days, 'people' (integer) number of people, 'base_fare' (float) flight or hotel cost per day/per person, 'location_multiplier' (float) from 1.0 to 3.0 based on cost of living."
+            "description": "Calculates estimated budget. Arguments: 'days' (integer) number of days, 'people' (integer) number of people, 'base_fare' (float) flight or hotel cost per day/per person."
+        },
+        {
+            "name": "convert_currency_to_vnd",
+            "description": "Converts amount from supported currency to VND. Arguments: 'amount' (float), 'currency' (string: USD, EUR, GBP, JPY, CNY, KRW, VND)."
         }
     ]
     
     agent = ReActAgent(llm=provider, tools=tools)
     final_answer = agent.run(request.message)
     
-    return {"mode": "agent", "response": final_answer}
+    # Log complete chain of thought for debugging
+    logger.log_event("COMPLETE_TRACE", {
+        "mode": "agent",
+        "trace": final_answer.get("trace", []),
+        "metrics_summary": {
+            "steps": final_answer.get("metrics", {}).get("steps"),
+            "total_tokens": final_answer.get("metrics", {}).get("total_tokens"),
+            "latency_ms": final_answer.get("metrics", {}).get("latency_ms"),
+        }
+    })
+    
+    return {"mode": "agent", **final_answer}
 
 # Chạy bằng uvicorn src.api:app --reload
