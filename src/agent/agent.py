@@ -4,6 +4,8 @@ import json
 from typing import List, Dict, Any, Optional
 from src.core.llm_provider import LLMProvider
 from src.telemetry.logger import logger
+from src.tools.travel_search import search_web_travel_price
+from src.tools.cost_estimator import estimate_travel_budget
 
 class ReActAgent:
     """
@@ -108,10 +110,36 @@ IMPORTANT: You can only output ONE Action at a time. After outputting Action and
         """
         Helper method to execute tools.
         """
-        # Right now we just have mock lookup, but we'll wire up the real functions here.
-        # This will be done in the next phase (BE2/Tools).
-        for tool in self.tools:
-            if tool['name'] == tool_name:
-                return f"Simulated success for {tool_name} with args {args}"
-        
-        return f"Error: Tool {tool_name} not found."
+        declared_tools = {tool["name"] for tool in self.tools}
+        if tool_name not in declared_tools:
+            logger.log_event("PARSE_ERROR", {"error": "HALLUCINATED_TOOL", "tool_name": tool_name, "args": args})
+            return f"Error: Tool {tool_name} not found."
+
+        try:
+            if tool_name == "search_web_travel_price":
+                if "query" not in args:
+                    return "Error: Missing required argument 'query'."
+                result = search_web_travel_price(
+                    query=str(args.get("query", "")),
+                    location=str(args["location"]) if args.get("location") is not None else None,
+                )
+            elif tool_name == "estimate_travel_budget":
+                required = ["days", "people", "base_fare", "location_multiplier"]
+                missing = [k for k in required if k not in args]
+                if missing:
+                    return f"Error: Missing required arguments: {', '.join(missing)}."
+
+                result = estimate_travel_budget(
+                    days=int(args["days"]),
+                    people=int(args["people"]),
+                    base_fare=float(args["base_fare"]),
+                    location_multiplier=float(args["location_multiplier"]),
+                )
+            else:
+                return f"Error: Tool {tool_name} is declared but not implemented."
+        except Exception as exc:
+            logger.log_event("TOOL_ERROR", {"tool_name": tool_name, "args": args, "error": str(exc)})
+            return f"Error: Tool execution failed: {exc}"
+
+        logger.log_event("TOOL_CALL", {"tool_name": tool_name, "args": args, "result": result})
+        return result
