@@ -52,9 +52,13 @@ def run_cmd_demo():
             # print("\nAgent dang thao tac (Check logs/ de xem chi tiet tele metrics)...")
             
             # Khởi chạy Agent loop
-            response = agent.run(user_input)
+            agent_result = agent.run(user_input)
             
-            print(f"\nESG Advisor:\n{response}")
+            answer = agent_result.get("answer", "No answer found.")
+            metrics = agent_result.get("metrics", {})
+            
+            print(f"\nESG Advisor:\n{answer}")
+            print(f"\n[📈 Metrics] Tokens: {metrics.get('total_tokens', 0)} | Cost: ${metrics.get('estimated_cost_usd', 0)}")
             print("-" * 60)
             
         except KeyboardInterrupt:
